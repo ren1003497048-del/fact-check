@@ -9,7 +9,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-blue)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-6.2.0-646CFF)](https://vitejs.dev/)
 
-**智能验证网络信息的真实性，多维度分析让你看清真相**
+**智能验证网络信息的真实性，多维度核查社媒热传事件真相（主要针对简体中文）**
 
 [English](#english) | [中文](#中文)
 
