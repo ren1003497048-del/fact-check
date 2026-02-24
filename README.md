@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🔍 Truth Hunter
+# 🔍 Fact Check
 
 ### **AI-Powered Fact-Checking Tool / 基于 AI 的真实信息验证工具**
 
@@ -21,7 +21,7 @@
 
 ### ✨ 功能特点
 
-Truth Hunter 是一个强大的 AI 驱动的事实核查工具，帮助你快速验证网络信息的真实性。
+Fact Check 是一个强大的 AI 驱动的事实核查工具，帮助你快速验证网络信息的真实性。
 
 #### 🎯 核心功能
 
@@ -51,7 +51,7 @@ Truth Hunter 是一个强大的 AI 驱动的事实核查工具，帮助你快速
 ### 📸 使用演示
 
 #### 首页界面
-<img src="./screenshots/01-homepage.png" alt="Truth Hunter Homepage" width="800"/>
+<img src="./screenshots/01-homepage.png" alt="Fact Check Homepage" width="800"/>
 
 #### 验证示例
 <img src="./screenshots/02-verification-example.png" alt="Verification Example" width="800"/>
@@ -1852714,8 +1852714,8 @@ Truth Hunter 是一个强大的 AI 驱动的事实核查工具，帮助你快速
 #### 1️⃣ 克隆仓库
 
 \`\`\`bash
-git clone https://github.com/ren1003497048-del/truth-hunter.git
-cd truth-hunter
+git clone https://github.com/ren1003497048-del/fact-check.git
+cd fact-check
 \`\`\`
 
 #### 2️⃣ 安装依赖
@@ -1852789,7 +1852789,7 @@ npm run dev
 
 ### 🌟 项目优势
 
-#### 为什么选择 Truth Hunter？
+#### 为什么选择 Fact Check？
 
 1. **🔍 多维度验证**
    - 不仅判断真假，还分析时间线、来源、影响
@@ -1852905,7 +1852905,7 @@ npm run preview
 
 ### ✨ Features
 
-Truth Hunter is a powerful AI-driven fact-checking tool that helps you quickly verify the authenticity of online information.
+Fact Check is a powerful AI-driven fact-checking tool that helps you quickly verify the authenticity of online information.
 
 #### 🎯 Core Features
 
@@ -1852942,8 +1852942,8 @@ Truth Hunter is a powerful AI-driven fact-checking tool that helps you quickly v
 #### 1️⃣ Clone the Repository
 
 \`\`\`bash
-git clone https://github.com/ren1003497048-del/truth-hunter.git
-cd truth-hunter
+git clone https://github.com/ren1003497048-del/fact-check.git
+cd fact-check
 \`\`\`
 
 #### 2️⃣ Install Dependencies
@@ -1853015,7 +1853015,7 @@ Open your browser and visit http://localhost:5173 to start using!
 
 ---
 
-### 🌟 Why Truth Hunter?
+### 🌟 Why Fact Check?
 
 1. **🔍 Multi-dimensional Verification**
    - Not just true/false, but also timeline, sources, impact

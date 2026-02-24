@@ -41,3 +41,7 @@ AUDIT_*.md
 
 # Temporary files
 nul
+
+# IDE configurations (Claude Code & Cursor)
+.claude/
+.cursor/

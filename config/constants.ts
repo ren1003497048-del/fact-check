@@ -24,7 +24,7 @@ export const CONFIG = {
   HISTORY: {
     MAX_ENTRIES: 50,         // Maximum history entries to keep
     TRIM_ON_QUOTA: 10,       // Trim to this many entries when quota exceeded
-    STORAGE_KEY: 'truth-hunter-history',
+    STORAGE_KEY: 'fact-check-history',
   },
 
   // Rate limiting - Multi-tier protection
