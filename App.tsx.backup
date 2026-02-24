@@ -1,0 +1,980 @@
+import React, { useState, useRef, useEffect } from 'react';
+import DOMPurify from 'dompurify';
+import { checkFacts } from './services/apiClient';
+import { VerificationResult, VerdictType } from './types';
+import { CONFIG } from './config/constants';
+import * as Icons from './components/Icons';
+import { parseBase64DataUrl } from './utils/imageUtils';
+
+// Categorized truth quotes and historical events for intelligent loading screen
+interface QuoteItem {
+  quote: string;
+  context: string;
+  era: string;
+  readTime: number; // Estimated reading time in seconds
+}
+
+const QUOTE_DATABASE: Record<string, QuoteItem[]> = {
+  // News & Journalism related
+  news: [
+    {
+      quote: '当真相还在穿鞋的时候，谎言已经跑遍了半个世界。',
+      context: '— 马克·吐温（此说法最早可追溯至1710年）\n\n讽刺作家乔纳森·斯威夫特和马克·吐温都引用过的这句格言，捕捉到了错误信息的病毒式传播本质——比社交媒体让它变得瞬间传播早了三个世纪。在新闻传播速度呈指数级增长的今天，这句话比以往任何时候都更加切题。',
+      era: '新闻传播学',
+      readTime: 6
+    },
+    {
+      quote: '1835年大月球骗局',
+      context: '《纽约太阳报》刊登了一系列文章，声称天文学家约翰·赫歇尔在月球上发现了生命——包括蝙蝠人和独角兽。报纸销量飙升。公众愿意相信。\n\n这是历史上第一次由媒体制造的病毒式假新闻。报纸没有撤回报道，而是在两周后「承认」这是一个玩笑，但销量已经翻倍。教训：信任信源，而非叙事。验证始终重要。',
+      era: '媒体史',
+      readTime: 8
+    },
+    {
+      quote: '新闻业的第一条法则是：去验证，然后才去报道。',
+      context: '— 菲利普·格雷厄姆，《华盛顿邮报》前发行人\n\n在24小时新闻周期和点击率竞争的时代，这条基本准则经常被遗忘。速度不应以牺牲准确性为代价。一个纠正的故事永远无法取代第一次就讲对的故事。假新闻的传播速度是真新闻的六倍，这使得验证比以往任何时候都更加关键。',
+      era: '新闻伦理',
+      readTime: 7
+    },
+    {
+      quote: '黄色新闻的泛滥',
+      context: '1890年代末，赫斯特报业和纽约世界报之间激烈竞争，催生了「黄色新闻」——耸人听闻、标题党、情绪化的新闻，不惜牺牲事实来争夺读者。这种模式在社交媒体时代以新的形式重现：算法优化的标题、情绪操纵、极化内容。\n\n历史告诉我们：没有把关人的信息生态系统会自然退化为娱乐。',
+      era: '新闻史',
+      readTime: 9
+    }
+  ],
+
+  // Technology & Science related
+  tech: [
+    {
+      quote: '第一原则是你绝不能欺骗自己——而你自己是最容易欺骗的人。',
+      context: '— 理查德·费恩曼，加州理工学院毕业演讲（1974）\n\n这位诺贝尔物理学奖得主关于科学诚信的著名警告，同样适用于信息消费。在算法推荐和精心策划的信息流时代，自我欺骗是最大的脆弱之处。我们必须主动挑战自己的确认偏误。',
+      era: '科学哲学',
+      readTime: 7
+    },
+    {
+      quote: 'Theranos诈骗案：硅谷的「坏血」',
+      context: '伊丽莎白·霍姆斯声称其公司Theranos的设备可以用几滴血进行数百项检测。估值90亿美元。但这项技术从未真正奏效。数千患者可能收到了错误的检测结果。\n\n硅谷的「fake it till you make it」文化在医疗领域是危险的。当创新突破科学和伦理边界时，我们必须质疑，而不是盲目崇拜独角兽神话。',
+      era: '科技史',
+      readTime: 9
+    },
+    {
+      quote: '任何足够先进的技术都与魔法无异。',
+      context: '— 亚瑟·C·克拉克\n\n但当我们无法区分技术和魔法时，也意味着我们放弃了理解它们如何运作的责任。深度伪造、AI生成内容、算法黑箱——当技术变得不可解释时，它变成了信任的黑洞。透明度和可验证性是技术民主化的关键。',
+      era: '技术哲学',
+      readTime: 8
+    },
+    {
+      quote: '数据不是真相，数据是对现实的观察。',
+      context: '— 统计学原则\n\n数据可以被选择、切片、操纵以支持任何叙事。Correlation不等于causation。在没有适当背景的情况下解读数据，是通往错误结论的最快途径。科学方法不仅仅是收集数据，而是设计能够排除偏差的实验。',
+      era: '数据科学',
+      readTime: 7
+    }
+  ],
+
+  // Politics & Ideology related
+  politics: [
+    {
+      quote: '战争即和平。自由即奴役。无知即力量。',
+      context: '— 乔治·奥威尔，《1984》（1949）\n\n奥威尔对极权主义语言操纵的反乌托邦式警示，预言了现代对真相衰退、宣传和信息武器化的担忧。当政府或机构重新定义基本词汇——"另类事实"、"假新闻"——他们在改写现实。语言控制是思想控制的前奏。',
+      era: '政治哲学',
+      readTime: 9
+    },
+    {
+      quote: '水能载舟，亦能覆舟。',
+      context: '— 荀子，《王制》（约公元前3世纪）\n\n信息如同流水，既能承载文明的舟船，也能倾覆虚假的楼阁。两千多年前的中国哲学家提醒我们：力量的双重性永远值得警惕。权力需要制衡，话语需要多元，真相需要守护。',
+      era: '中国古代哲学',
+      readTime: 6
+    },
+    {
+      quote: '阿希从众实验',
+      context: '1951年，所罗门·阿希展示了人们会如何公然否认自己亲眼所见，以与群体保持一致。75%的参与者至少有一次同意了明显错误的答案，仅仅因为其他人都在这么做。\n\n在信息茧房和回音室的时代，这种群体从众被算法放大。独立的批判性思维是抵抗集体错觉的唯一武器。',
+      era: '社会心理学',
+      readTime: 9
+    },
+    {
+      quote: '宣传最有效的形式是当人们不认为它是宣传的时候。',
+      context: '— 弗朗西斯·怀兰·肖恩，中央情报局前官员\n\n有效宣传不是大喊口号，而是微妙地塑造信息环境。选择性报道、框架效应、议程设置——这些工具无处不在，因为它们有效。媒体素养教育从未如此紧迫：识别框架，质疑叙事，追踪资金。',
+      era: '政治传播',
+      readTime: 8
+    }
+  ],
+
+  // Health & Medical related
+  health: [
+    {
+      quote: 'Wakesfield的伪造研究',
+      context: '1998年，安德鲁·韦克菲尔德发表论文声称自闭症与麻疹、腮腺炎和风疹（MMR）疫苗之间存在联系。该论文后被完全撤回，他被禁止行医。但损害已经造成：麻疹病例在欧美激增。\n\n一项伪造的研究可以产生数十年的现实世界影响。科学共识不是通过单一研究建立的，而是通过可重复的验证。当被撤回的研究继续作为论据流传时，系统失效了。',
+      era: '医学史',
+      readTime: 10
+    },
+    {
+      quote: '轶事不等于数据。',
+      context: '— 医学研究黄金法则\n\n"我姑姑吃了这个就好了"不是科学证据。"我的朋友发帖说"不是同行评审。个人的强烈故事可以令人信服，因为它们在情感上引起共鸣，但它们不能代表一般情况。循证医学依赖于大样本量、对照试验和统计分析。',
+      era: '循证医学',
+      readTime: 6
+    },
+    {
+      quote: ' correlation不等于因果。',
+      context: '— 统计学101\n\n冰淇淋销售和溺水事故同时增加，但冰淇淋不会导致溺水——两者都由夏天引起。人类大脑天生擅长检测模式，但糟糕的是区分相关性和因果关系。这种认知偏差使我们在健康和营养方面容易受到错误信息的影响。',
+      era: '研究方法',
+      readTime: 7
+    }
+  ],
+
+  // Business & Finance related
+  business: [
+    {
+      quote: '安然公司崩塌',
+      context: '2001年，能源巨头安然公司因会计欺诈而倒闭，成为当时最大的企业破产案。其"创造性会计"方法——将债务隐藏在离岸实体中——被视为"创新"，直到无法再隐藏。\n\n当"颠覆"和"创新"成为流行词时，监管和透明度变得不酷了。但安然提醒我们：财务复杂性可能掩盖简单的欺诈。如果一项交易好得难以置信，那它可能就是难以置信。',
+      era: '商业史',
+      readTime: 9
+    },
+    {
+      quote: '庞氏骗局的本质',
+      context: '— 查尔斯·庞齐，1920年\n\n"用后来投资者的钱支付早期投资者的回报。"这是最简单的骗局，也是最难识破的，因为早期的参与者确实赚了钱——并且是他们最响亮的啦啦队。在加密货币和投资领域，每当看到承诺不切实际回报时，都应该问：钱从哪里来？',
+      era: '金融史',
+      readTime: 7
+    },
+    {
+      quote: '市场泡沫的共同特征',
+      context: '— "这次不一样"综合症\n\n从郁金香狂热（1637）到互联网泡沫（2000），每一次泡沫都有信徒相信基本规则不再适用。新术语、新技术、新范式——但人类的贪婪和恐惧保持不变。当街头巷尾都在谈论某个投资时，可能正是该离场的时候。',
+      era: '经济学',
+      readTime: 8
+    }
+  ],
+
+  // General & Philosophy (default)
+  general: [
+    {
+      quote: '真相很少是纯粹的，也绝不简单。',
+      context: '— 奥斯卡·王尔德，《不可儿戏》（1895）\n\n在这个耸人听闻的标题和病毒式短视频的时代，王尔德的智慧提醒我们：现实往往拒绝被简化。每一个主张都值得调查，每一个真相都需要细致的辨析。复杂的问题很少有简单的答案。',
+      era: '文学',
+      readTime: 6
+    },
+    {
+      quote: '事实是顽强的东西；无论我们的愿望、倾向或激情如何，都无法改变事实和证据的状态。',
+      context: '— 约翰·亚当斯，波士顿大屠杀案辩护词（1770）\n\n在美国革命前最动荡的审判之一中，亚当斯尽管持有爱国情怀，仍为英国士兵辩护。他对证据而非意识形态的承诺，成为法律伦理的基石。当情感与事实冲突时，选择事实需要勇气。',
+      era: '法律史',
+      readTime: 7
+    },
+    {
+      quote: '认知失调和确认偏误导致聪明人拒绝接受不舒服的真相。',
+      context: '— 心理学研究\n\n认识到我们自己的心理防御机制，是迈向真正理解的第一步。人类的大脑天生倾向于寻找支持既有信念的证据，这正是批判性思维如此重要的原因。我们必须主动挑战自己的假设。',
+      era: '心理学',
+      readTime: 6
+    },
+    {
+      quote: '在信息时代，无知是一种选择。',
+      context: '— 唐尼·米勒\n\n人类知识触手可及，但通往真相的障碍已不再是获取渠道——而是面对不舒服事实的意愿，以及区分可信信源的纪律。信息过载时代，批判性思维是最稀缺的资源。',
+      era: '数字时代',
+      readTime: 6
+    },
+    {
+      quote: '调查性新闻和深度研究需要耐心。在即时答案的时代，彻底验证的纪律既罕见又革命性。',
+      context: '— 媒体伦理原则\n\n真正的洞察需要时间酝酿。在这个追求速度的世界里，愿意慢下来深入挖掘真相的记者和研究员，成为了对抗浅薄信息的最后防线。好核查需要时间——这值得等待。',
+      era: '新闻伦理',
+      readTime: 7
+    }
+  ]
+};
+
+// Intelligent content classifier
+function detectContentType(text: string): string {
+  const lowerText = text.toLowerCase();
+
+  // Keyword-based classification
+  const patterns = {
+    news: [
+      '新闻', '报道', '记者', '媒体', 'press', 'news', 'report', 'journalism',
+      '头条', '热搜', '突发', 'breaking', 'article', '采访'
+    ],
+    tech: [
+      '科技', '技术', 'ai', '人工智能', '算法', '硅谷', '数据', '芯片',
+      'tech', 'technology', 'algorithm', 'software', 'app', 'platform',
+      '创业', '公司', '估值', '融资', 'startup', 'unicorn'
+    ],
+    politics: [
+      '政治', '政府', '选举', '政策', '总统', '领导人', 'politics', 'government',
+      'election', 'policy', 'democracy', 'freedom', 'rights', 'censorship',
+      '宣传', 'propaganda', '抗议', 'protest', '法律', 'law', 'court'
+    ],
+    health: [
+      '健康', '医疗', '疫苗', '病毒', '医学', '治疗', 'health', 'medical',
+      'vaccine', 'virus', 'doctor', 'medicine', 'treatment', 'drug',
+      '营养', '饮食', 'exercise', '疫情', 'pandemic', 'covid'
+    ],
+    business: [
+      '经济', '金融', '投资', '股票', '股市', 'business', 'finance',
+      'investment', 'stock', 'market', 'economy', 'money', 'crypto',
+      '加密货币', '比特币', 'bitcoin', '庞氏', '骗局', 'scam', 'fraud'
+    ]
+  };
+
+  // Check each category
+  for (const [category, keywords] of Object.entries(patterns)) {
+    for (const keyword of keywords) {
+      if (lowerText.includes(keyword.toLowerCase())) {
+        return category;
+      }
+    }
+  }
+
+  // Default to general
+  return 'general';
+}
+
+// Select quotes based on content type
+function selectQuotesByCategory(contentType: string): QuoteItem[] {
+  return QUOTE_DATABASE[contentType] || QUOTE_DATABASE.general;
+}
+
+// Image resizing utility using config constants
+const resizeImage = (file: File, maxWidth: number = CONFIG.IMAGE.MAX_WIDTH): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                const elem = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height *= maxWidth / width;
+                    width = maxWidth;
+                }
+
+                elem.width = width;
+                elem.height = height;
+                const ctx = elem.getContext('2d');
+                if (!ctx) {
+                    resolve(event.target?.result as string); // Fallback to original
+                    return;
+                }
+                ctx.drawImage(img, 0, 0, width, height);
+                // Compress to JPEG using config quality
+                resolve(elem.toDataURL('image/jpeg', CONFIG.IMAGE.JPEG_QUALITY));
+            };
+            img.onerror = (err) => reject(err);
+        };
+        reader.onerror = (err) => reject(err);
+    });
+};
+
+const App: React.FC = () => {
+  const [inputText, setInputText] = useState('');
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingQuote, setLoadingQuote] = useState<QuoteItem>(QUOTE_DATABASE.general[0]);
+  const [loadingStartTime, setLoadingStartTime] = useState<number>(0);
+  const [currentQuoteIndex, setCurrentQuoteIndex] = useState<number>(0);
+  const [availableQuotes, setAvailableQuotes] = useState<QuoteItem[]>(QUOTE_DATABASE.general);
+  const [minDisplayTime, setMinDisplayTime] = useState<number>(CONFIG.QUOTE.MIN_DISPLAY_TIME_MS);
+  const [result, setResult] = useState<VerificationResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [currentDate, setCurrentDate] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<Array<{
+    id: string;
+    timestamp: number;
+    input: string;
+    result: VerificationResult;
+  }>>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const screenshotRef = useRef<HTMLDivElement>(null);
+  const quoteRotationTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    setCurrentDate(new Date().toLocaleDateString());
+    // Load history from localStorage using config key
+    const savedHistory = localStorage.getItem(CONFIG.HISTORY.STORAGE_KEY);
+    if (savedHistory) {
+      try {
+        setHistory(JSON.parse(savedHistory));
+      } catch (e) {
+        if (import.meta.env.DEV) console.error('Failed to load history:', e);
+      }
+    }
+  }, []);
+
+  // Auto-rotate quotes every 10 seconds if still loading
+  useEffect(() => {
+    if (loading && availableQuotes.length > 1) {
+      // Clear any existing timer
+      if (quoteRotationTimerRef.current) {
+        clearTimeout(quoteRotationTimerRef.current);
+      }
+
+      // Set up rotation timer using config
+      quoteRotationTimerRef.current = setTimeout(() => {
+        const nextIndex = (currentQuoteIndex + 1) % availableQuotes.length;
+        setCurrentQuoteIndex(nextIndex);
+        setLoadingQuote(availableQuotes[nextIndex]);
+        // Update min display time based on new quote
+        setMinDisplayTime(Math.max(CONFIG.QUOTE.MIN_DISPLAY_TIME_MS, availableQuotes[nextIndex].readTime * 1000));
+      }, CONFIG.QUOTE.ROTATION_INTERVAL_MS);
+
+      // Cleanup on unmount or when loading stops
+      return () => {
+        if (quoteRotationTimerRef.current) {
+          clearTimeout(quoteRotationTimerRef.current);
+        }
+      };
+    }
+  }, [loading, currentQuoteIndex, availableQuotes]);
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      try {
+        // Optimize image before setting it
+        const resizedDataUrl = await resizeImage(file);
+        setSelectedImage(file);
+        setImagePreview(resizedDataUrl);
+      } catch (err) {
+        if (import.meta.env.DEV) console.error("Image resize failed", err);
+        // Fallback to basic read
+        setSelectedImage(file);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreview(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleSubmit = async () => {
+    if (!inputText.trim() && !selectedImage) {
+      setError("Please input text or upload an image to start verification. / 请输入文本或上传图片以开始核查。");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    // Record start time
+    const startTime = Date.now();
+    setLoadingStartTime(startTime);
+
+    // Detect content type and select appropriate quotes
+    const contentType = detectContentType(inputText);
+    const quotes = selectQuotesByCategory(contentType);
+    setAvailableQuotes(quotes);
+
+    // Select first quote randomly from the category
+    const firstQuoteIndex = Math.floor(Math.random() * quotes.length);
+    setCurrentQuoteIndex(firstQuoteIndex);
+    setLoadingQuote(quotes[firstQuoteIndex]);
+
+    // Set minimum display time based on quote reading time using config
+    const requiredMinTime = Math.max(CONFIG.QUOTE.MIN_DISPLAY_TIME_MS, quotes[firstQuoteIndex].readTime * 1000);
+    setMinDisplayTime(requiredMinTime);
+
+    try {
+      let base64Image = undefined;
+      let mimeType = undefined;
+
+      if (imagePreview) {
+        // Use safe parsing function
+        const parsed = parseBase64DataUrl(imagePreview);
+        if (parsed) {
+          base64Image = parsed.base64;
+          mimeType = parsed.mimeType;
+        } else {
+          setError('Invalid image format / 图片格式无效');
+          setLoading(false);
+          return;
+        }
+      }
+
+      const data = await checkFacts(inputText, base64Image, mimeType);
+      // Ensure minimum display time
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = requiredMinTime - elapsedTime;
+
+      if (remainingTime > 0) {
+        // Wait for remaining time to ensure user can read the quote
+        await new Promise(resolve => setTimeout(resolve, remainingTime));
+      }
+
+      setResult(data);
+
+      // Save to history with quota error handling
+      const newEntry = {
+        id: Date.now().toString(),
+        timestamp: Date.now(),
+        input: inputText || '(Image only)',
+        result: data
+      };
+      const updatedHistory = [newEntry, ...history].slice(0, CONFIG.HISTORY.MAX_ENTRIES);
+
+      try {
+        localStorage.setItem(CONFIG.HISTORY.STORAGE_KEY, JSON.stringify(updatedHistory));
+        setHistory(updatedHistory);
+      } catch (quotaError) {
+        if (quotaError instanceof DOMException && quotaError.name === 'QuotaExceededError') {
+          // Keep only recent entries using config
+          const trimmedHistory = updatedHistory.slice(0, CONFIG.HISTORY.TRIM_ON_QUOTA);
+          setHistory(trimmedHistory);
+          try {
+            localStorage.setItem(CONFIG.HISTORY.STORAGE_KEY, JSON.stringify(trimmedHistory));
+          } catch {
+            // Notify user that history cannot be saved
+            setError('Warning: History cannot be saved. Storage quota exceeded. / 历史记录无法保存，存储空间不足。');
+            // Still show the result even if history save failed
+            setResult(data);
+            setLoading(false);
+            return;
+          }
+        } else {
+          throw quotaError;
+        }
+      }
+    } catch (err) {
+      if (import.meta.env.DEV) console.error(err);
+      const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
+
+      // Provide user-friendly error messages
+      let userMessage = "An error occurred during verification. Please try again. / 核查过程中发生错误，请重试。";
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+        userMessage = "Unable to connect to the server. Please check if the backend is running. / 无法连接到服务器，请检查后端是否运行。";
+      } else if (errorMessage.includes('500')) {
+        userMessage = "Server error occurred. Please try again later. / 服务器错误，请稍后重试。";
+      }
+
+      setError(userMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getVerdictColor = (verdict: string) => {
+    switch (verdict) {
+      case 'REAL': return 'text-green-700';
+      case 'FAKE': return 'text-red-600';
+      case 'MISLEADING': return 'text-orange-600';
+      default: return 'text-gray-600';
+    }
+  };
+
+  const getVerdictText = (verdict: string) => {
+    switch (verdict) {
+      case 'REAL': return VerdictType.REAL;
+      case 'FAKE': return VerdictType.FAKE;
+      case 'MISLEADING': return VerdictType.MISLEADING;
+      default: return VerdictType.UNVERIFIED;
+    }
+  };
+
+  const getReferenceBadge = (type: string) => {
+    switch(type) {
+        case 'CONFLICT':
+            return <span className="bg-black text-white text-[10px] font-bold px-2 py-0.5 uppercase tracking-wider">CONFLICT / 存在出入</span>;
+        case 'SUPPORT':
+            return <span className="border border-black text-black text-[10px] font-bold px-2 py-0.5 uppercase tracking-wider">SUPPORT / 证实</span>;
+        default:
+            return <span className="bg-gray-200 text-gray-600 text-[10px] font-bold px-2 py-0.5 uppercase tracking-wider">NEUTRAL / 参考</span>;
+    }
+  };
+
+  // Screenshot functionality
+  const handleScreenshot = async () => {
+    if (!screenshotRef.current) {
+      setError('No content to capture / 没有可截图的内容');
+      return;
+    }
+
+    try {
+      // Use html2canvas library if available, otherwise fallback
+      const html2canvas = (window as any).html2canvas;
+      if (!html2canvas) {
+        setError('Screenshot library not loaded. Please install html2canvas. / 截图库未加载');
+        return;
+      }
+
+      // Create a temporary wrapper with padding
+      const wrapper = document.createElement('div');
+      wrapper.style.position = 'absolute';
+      wrapper.style.left = '-9999px';
+      wrapper.style.width = 'auto';
+      wrapper.style.maxWidth = '1400px'; // Allow full width
+      wrapper.style.padding = '20px'; // ~5mm padding on all sides
+      wrapper.style.backgroundColor = '#ffffff';
+      wrapper.style.boxSizing = 'border-box';
+
+      // Clone the content
+      const clone = screenshotRef.current.cloneNode(true);
+      (clone as HTMLElement).style.width = '100%';
+      (clone as HTMLElement).style.maxWidth = '1280px'; // Match max-w-5xl
+      wrapper.appendChild(clone);
+      document.body.appendChild(wrapper);
+
+      const canvas = await html2canvas(wrapper, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        logging: false,
+        width: wrapper.offsetWidth,
+        height: wrapper.offsetHeight,
+      });
+
+      // Clean up
+      document.body.removeChild(wrapper);
+
+      // Convert to blob and download
+      canvas.toBlob((blob: Blob | null) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `truth-hunter-${Date.now()}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    } catch (err) {
+      if (import.meta.env.DEV) console.error(err);
+      setError('Screenshot failed / 截图失败');
+    }
+  };
+
+  // Share functionality
+  const handleShare = async () => {
+    if (!result) return;
+
+    const shareData = {
+      title: 'Truth Hunter - Fact Check Result',
+      text: `${result.verdict} - ${inputText.slice(0, 100)}...`,
+      url: window.location.href
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        // Fallback: copy to clipboard
+        await navigator.clipboard.writeText(
+          `Truth Hunter 核查结果:\n${result.verdict}\n评分: ${result.score}/100\n\n${result.expert_advice}\n\n${window.location.href}`
+        );
+        alert('Link copied to clipboard! / 链接已复制到剪贴板！');
+      }
+    } catch (err) {
+      if (import.meta.env.DEV) console.error(err);
+    }
+  };
+
+  // Load history item
+  const loadHistoryItem = (item: typeof history[0]) => {
+    setInputText(item.input);
+    setResult(item.result);
+    setShowHistory(false);
+    setError(null);
+  };
+
+  // Clear history
+  const clearHistory = () => {
+    if (confirm('Clear all history? / 清空所有历史记录？')) {
+      setHistory([]);
+      localStorage.removeItem(CONFIG.HISTORY.STORAGE_KEY);
+    }
+  };
+
+  return (
+    <div ref={screenshotRef} className="min-h-screen bg-white text-black p-6 md:p-12 max-w-5xl mx-auto">
+      
+      {/* Header */}
+      <header className="mb-12 border-b-4 border-black pb-4">
+        <div className="flex flex-col md:flex-row justify-between items-end gap-4">
+          <div>
+            <h1 className="text-4xl md:text-5xl font-bold font-serif-sc tracking-tighter">TRUTH HUNTER <span className="font-light text-3xl">|</span> 真相捕手</h1>
+            <p className="text-sm uppercase tracking-widest mt-2 font-semibold flex flex-wrap items-center gap-2">
+              <span className="bg-black text-white px-2 py-0.5">BETA</span> 
+              <span>PROFESSIONAL INVESTIGATIVE TOOL / 专业新闻核查工具</span>
+            </p>
+          </div>
+          <div className="text-right text-xs font-mono text-gray-600 hidden md:block">
+            <p>Cross-Reference / Source Analysis / Visual Forensics</p>
+            <p className="mt-1">多源交叉 / 溯源分析 / 视觉取证</p>
+            <p className="font-bold text-black mt-2">{currentDate}</p>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        {/* Input Section */}
+        <section className="mb-12">
+          <div className="border-heavy p-1 transition-all focus-within:ring-2 focus-within:ring-black focus-within:ring-offset-2">
+
+            {/* Image Preview Area */}
+            {imagePreview && (
+              <div className="relative bg-gray-100 border-b-2 border-black p-4 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <img src={imagePreview} alt="Preview" className="h-20 w-auto object-cover border border-black shadow-sm" />
+                  <span className="text-xs font-mono truncate max-w-[200px]">{selectedImage?.name || 'capture.jpg'}</span>
+                </div>
+                <button
+                  onClick={handleRemoveImage}
+                  className="text-xs uppercase font-bold hover:underline text-red-600"
+                >
+                  REMOVE [X]
+                </button>
+              </div>
+            )}
+
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              rows={6}
+              className="w-full p-4 focus:outline-none text-lg resize-none placeholder:text-gray-400 font-serif-sc"
+              placeholder="Paste news text, a social media link, or upload a screenshot to investigate...&#10;在此输入新闻文本、粘贴链接或上传截图以开始核查..."
+            ></textarea>
+
+            <div className="flex border-t-2 border-black">
+              <button
+                onClick={handleSubmit}
+                disabled={loading}
+                className="flex-1 bg-black text-white py-4 font-bold hover:bg-gray-800 transition uppercase tracking-widest flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {loading ? 'CONNECTING TO SOURCES... / 正在连接信源...' : 'START INVESTIGATION / 开始核查'}
+                {!loading && <Icons.SearchIcon />}
+              </button>
+
+              <div className="relative">
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={fileInputRef}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  onChange={handleImageUpload}
+                />
+                <button className="h-full px-6 border-l-2 border-black hover:bg-gray-100 flex items-center justify-center transition" title="Upload Image / 上传图片">
+                  <Icons.UploadIcon />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-2 mt-3 justify-end">
+            <button
+              onClick={handleScreenshot}
+              disabled={!result}
+              className="px-4 py-2 border-2 border-black text-xs font-bold uppercase hover:bg-black hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+              title="Screenshot / 截图"
+            >
+              <Icons.ScreenshotIcon />
+              <span className="hidden sm:inline">Screenshot / 截图</span>
+            </button>
+            <button
+              onClick={handleShare}
+              disabled={!result}
+              className="px-4 py-2 border-2 border-black text-xs font-bold uppercase hover:bg-black hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+              title="Share / 分享"
+            >
+              <Icons.ShareIcon />
+              <span className="hidden sm:inline">Share / 分享</span>
+            </button>
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="px-4 py-2 border-2 border-black text-xs font-bold uppercase hover:bg-black hover:text-white transition flex items-center gap-2 relative"
+              title="History / 历史记录"
+            >
+              <Icons.HistoryIcon />
+              <span className="hidden sm:inline">History / 历史</span>
+              {history.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-black text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
+                  {history.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* History Panel */}
+          {showHistory && (
+            <div className="mt-4 border-2 border-black bg-white shadow-lg">
+              <div className="p-4 border-b-2 border-black flex justify-between items-center">
+                <h3 className="font-bold uppercase text-sm">History / 历史记录 ({history.length})</h3>
+                <button
+                  onClick={clearHistory}
+                  className="text-xs text-red-600 hover:underline font-bold"
+                >
+                  Clear All / 清空
+                </button>
+              </div>
+              <div className="max-h-80 overflow-y-auto">
+                {history.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500 text-sm">
+                    No history yet / 暂无历史记录
+                  </div>
+                ) : (
+                  history.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => loadHistoryItem(item)}
+                      className="p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer transition"
+                    >
+                      <div className="flex justify-between items-start gap-4">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-mono text-gray-500 mb-1">
+                            {new Date(item.timestamp).toLocaleString()}
+                          </p>
+                          <p className="text-sm font-medium truncate">{item.input}</p>
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className={`text-xs font-bold ${item.result.verdict === 'REAL' ? 'text-green-700' : item.result.verdict === 'FAKE' ? 'text-red-600' : 'text-orange-600'}`}>
+                              {item.result.verdict}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              Score: {item.result.score}/100
+                            </span>
+                          </div>
+                        </div>
+                        <Icons.DownloadIcon />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+          <p className="text-xs mt-3 text-gray-500 font-mono italic text-right">
+            * Automating Google Search, OCR, and Multi-modal Forensics / 自动调用全网搜索、OCR与多模态取证
+          </p>
+          
+          {error && (
+            <div className="mt-4 p-4 border-2 border-red-600 bg-red-50 text-red-800 flex items-center gap-3">
+              <Icons.AlertIcon />
+              <span className="text-sm font-bold">{error}</span>
+            </div>
+          )}
+        </section>
+
+        {/* Loading State - Truth Quote Display */}
+        {loading && (
+          <div className="mt-8 border-2 border-black bg-white shadow-lg overflow-hidden animate-fade-in">
+            {/* Decorative header bar */}
+            <div className="bg-black text-white px-6 py-3 flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-widest">正在核查中 / Investigation in Progress</span>
+              <div className="flex gap-1">
+                <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+                <span className="w-2 h-2 bg-white rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></span>
+                <span className="w-2 h-2 bg-white rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></span>
+              </div>
+            </div>
+
+            {/* Quote content */}
+            <div className="p-8 md:p-12 bg-gradient-to-br from-gray-50 to-white">
+              {/* Era badge */}
+              <div className="inline-block mb-6">
+                <span className="text-xs font-bold uppercase tracking-wider border-2 border-black px-3 py-1 bg-white">
+                  {loadingQuote.era}
+                </span>
+              </div>
+
+              {/* Main quote */}
+              <blockquote className="mb-8">
+                <p className="text-2xl md:text-3xl lg:text-4xl font-serif-sc font-bold leading-relaxed text-gray-900 mb-6">
+                  {loadingQuote.quote}
+                </p>
+              </blockquote>
+
+              {/* Context */}
+              <div className="border-l-4 border-black pl-6 py-2 bg-gray-100">
+                <p className="text-base md:text-lg text-gray-700 leading-relaxed whitespace-pre-line">
+                  {loadingQuote.context}
+                </p>
+              </div>
+
+              {/* Loading indicator */}
+              <div className="mt-8 flex items-center justify-center gap-3 text-gray-400 text-sm">
+                <div className="w-4 h-4 border-2 border-gray-300 border-t-black rounded-full animate-spin"></div>
+                <span className="tracking-wider font-medium">
+                  正在分析信源并交叉验证数据... / Analyzing sources & cross-referencing data
+                </span>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div className="h-1 bg-gray-200">
+              <div className="h-full bg-black animate-progress"></div>
+            </div>
+          </div>
+        )}
+
+        {/* Results Section */}
+        {result && !loading && (
+          <div className="space-y-12 animate-fade-in pb-20">
+            
+            {/* Verdict Banner */}
+            <div className="border-heavy p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-gray-50">
+              <div>
+                <span className="text-sm font-bold uppercase block mb-1 tracking-wider text-gray-500">Verdict / 核查定性</span>
+                <h2 className={`text-4xl md:text-5xl font-bold font-serif-sc italic ${getVerdictColor(result.verdict)}`}>
+                  {getVerdictText(result.verdict)}
+                </h2>
+              </div>
+              <div className="text-right w-full md:w-auto border-t md:border-t-0 border-gray-300 pt-4 md:pt-0">
+                <span className="text-sm font-bold block mb-1 tracking-wider text-gray-500">Confidence Score / 可信度</span>
+                <div className="flex items-baseline justify-end gap-1">
+                   <span className="text-6xl font-mono font-bold">{result.score}</span>
+                   <span className="text-xl font-mono text-gray-400">/100</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Expert Advice / Lead */}
+            <div className="p-5 border-l-4 border-black bg-gray-100 text-lg">
+                <span className="font-bold font-sans text-xs uppercase block mb-3 text-gray-500">Editor's Note / 编辑手记</span>
+                <div className="whitespace-pre-wrap leading-relaxed font-normal">{result.expert_advice}</div>
+            </div>
+
+            {/* Evaluation Matrix */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="border-2 border-black p-5 hover:bg-gray-50 transition">
+                    <h3 className="font-bold border-b border-black mb-3 pb-1 uppercase text-sm tracking-wide flex justify-between">
+                        ① SOURCE AUTHORITY / 来源权威性
+                    </h3>
+                    <p className="text-sm leading-relaxed font-medium whitespace-pre-wrap">{result.analysis.source}</p>
+                </div>
+                <div className="border-2 border-black p-5 hover:bg-gray-50 transition">
+                    <h3 className="font-bold border-b border-black mb-3 pb-1 uppercase text-sm tracking-wide flex justify-between">
+                        ② CONTEXT & CONSISTENCY / 语境一致性
+                    </h3>
+                    <p className="text-sm leading-relaxed font-medium whitespace-pre-wrap">{result.analysis.context}</p>
+                </div>
+                
+                {/* Enhanced Logic & Sentiment Section */}
+                <div className="border-2 border-black p-5 hover:bg-gray-50 transition md:col-span-2">
+                    <h3 className="font-bold border-b border-black mb-4 pb-1 uppercase text-sm tracking-wide flex justify-between">
+                        ③ LOGIC & SENTIMENT / 逻辑与舆论分层
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <p className="text-sm leading-relaxed font-medium whitespace-pre-wrap mb-4">
+                                {result.analysis.logic.summary}
+                            </p>
+                            <div className="mb-4">
+                                <span className="text-xs font-bold text-gray-500 uppercase block mb-2">Amplification Nodes / 关键节点</span>
+                                <div className="flex flex-wrap gap-2">
+                                    {result.analysis.logic.amplification_nodes.map((node, i) => (
+                                        <span key={i} className="text-xs font-mono bg-black text-white px-2 py-1 rounded-sm flex items-center gap-1">
+                                            <Icons.ShareIcon /> {node}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                            <div>
+                                <span className="text-xs font-bold text-gray-500 uppercase block mb-2">Primary Opinion Field / 舆论场</span>
+                                <span className="text-xs font-bold border border-gray-400 text-gray-700 px-3 py-1 rounded-full">
+                                    {result.analysis.logic.primary_opinion_field}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="bg-gray-100 p-4 border-l-2 border-gray-300">
+                             <span className="text-xs font-bold text-gray-500 uppercase block mb-2">Layered Analysis / 舆论分层辨析</span>
+                             <p className="text-sm leading-relaxed whitespace-pre-wrap text-gray-700 font-serif-sc">
+                                 {result.analysis.logic.opinion_stratification}
+                             </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="border-2 border-black p-5 hover:bg-gray-50 transition">
+                    <h3 className="font-bold border-b border-black mb-3 pb-1 uppercase text-sm tracking-wide flex justify-between">
+                        ④ CROSS-CHECK / 多源交叉验证
+                    </h3>
+                    <p className="text-sm leading-relaxed font-medium whitespace-pre-wrap">{result.analysis.cross_check}</p>
+                </div>
+                {result.analysis.visual && (
+                   <div className="border-2 border-black p-5 hover:bg-gray-50 transition">
+                       <h3 className="font-bold border-b border-black mb-3 pb-1 uppercase text-sm tracking-wide flex justify-between">
+                           ⑤ VISUAL FORENSICS / 视觉取证
+                       </h3>
+                       <p className="text-sm leading-relaxed font-medium whitespace-pre-wrap">{result.analysis.visual}</p>
+                   </div>
+                )}
+            </div>
+
+            {/* Evidence Timeline */}
+            <section className="border-t-4 border-black pt-8">
+                <h3 className="font-bold uppercase mb-8 italic tracking-widest text-xl font-serif-sc">
+                    Evidence Timeline / 证据溯源时间轴
+                </h3>
+                <div className="space-y-0 border-l-2 border-black ml-3 md:ml-6">
+                    {result.timeline.map((item, index) => (
+                        <div key={index} className="relative pl-8 pb-8 last:pb-0">
+                            {/* Dot */}
+                            <div className="absolute -left-[9px] top-1.5 w-4 h-4 bg-black border-2 border-white ring-1 ring-black rounded-full"></div>
+                            
+                            <div className="flex flex-col sm:flex-row sm:gap-6">
+                                <div className="font-bold font-mono text-sm w-32 shrink-0 pt-1 text-gray-600">{item.time}</div>
+                                <div className="flex-1 text-sm font-medium leading-relaxed bg-gray-50 p-3 -mt-2 border border-gray-200">
+                                    {item.event}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </section>
+            
+            {/* Source Analysis & Discrepancies */}
+            <section className="border-t-4 border-black pt-8">
+                <h3 className="font-bold uppercase mb-8 italic tracking-widest text-xl font-serif-sc flex items-center gap-3">
+                   Source Analysis / 来源分析与差异
+                </h3>
+                
+                {result.references && result.references.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-4">
+                     {result.references.map((ref, index) => (
+                       <div key={index} className="group flex flex-col sm:flex-row items-start gap-4 p-4 border-l-2 border-black hover:bg-gray-50 transition-colors">
+                          <div className="flex flex-col gap-2 shrink-0 w-full sm:w-48">
+                              <span className="font-bold text-sm truncate" title={ref.source_name}>{ref.source_name}</span>
+                              <div>{getReferenceBadge(ref.type)}</div>
+                          </div>
+                          
+                          <div className="flex-1 min-w-0">
+                             <p
+                               className="text-sm text-gray-800 leading-relaxed font-medium mb-1 whitespace-pre-wrap"
+                               dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(ref.note) }}
+                             />
+                             <a 
+                                href={ref.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="text-xs text-gray-400 hover:text-black flex items-center gap-1 mt-2 underline decoration-gray-300 hover:decoration-black underline-offset-2 break-all"
+                              >
+                                {ref.url} <Icons.LinkIcon />
+                             </a>
+                          </div>
+                       </div>
+                     ))}
+                  </div>
+                ) : (
+                  <div className="p-6 bg-gray-50 text-center text-sm text-gray-500 border border-gray-200 border-dashed">
+                    No specific discrepancy sources found.
+                  </div>
+                )}
+            </section>
+
+          </div>
+        )}
+
+      </main>
+
+      <footer className="mt-24 border-t border-gray-300 pt-8 mb-12 text-center text-xs text-gray-400 uppercase tracking-widest font-mono">
+        Truth Hunter AI © {new Date().getFullYear()} | Skepticism reveals truth
+      </footer>
+    </div>
+  );
+};
+
+export default App;

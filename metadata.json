@@ -1,0 +1,5 @@
+{
+  "name": "Fact Check",
+  "description": "A professional fact-checking tool for journalists that uses AI to verify news, analyze sources, and cross-reference facts with real-time internet search.",
+  "requestFramePermissions": []
+}
